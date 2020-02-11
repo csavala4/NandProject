@@ -43,4 +43,33 @@ CHIP ALU {
 
     PARTS:
    // Put you code here:
+	
+	//Set zx and zy inputs.
+	Mux16(a = x, b = false, sel = zx, out = x1);
+	Mux16(a = y, b = false, sel = zy, out = y1);
+
+	//Set nx and ny values.
+	Not16(in = x1, out = notx);
+	Mux16(a = x1, b = notx, sel = nx, out = x2);
+	
+	Not16(in = y1, out = noty);
+	Mux16(a = y1, b = noty, sel = ny, out = y2);
+	
+	//Set f(x,y) values;
+	And16(a = x2, b = y2, out = xandy);
+	Add16(a = x2, b = y2, out = xplusy);
+	Mux16(a = xandy, b = xplusy, sel = f, out = xy);
+
+	// Set output value
+	// set ng if out < 0. The MSB, bit[15], will be set to 1.
+	Not16(in =xy, out = notxy);
+	Mux16(a = xy, b = notxy, sel = no, out[15] = ng, out[0..7] = part1, out[8..15] = part2, out = out);
+	
+	// Set zr to 1 if out == 0.
+	//Can also be done with one Or16Way in place of the Or8Way.
+	Or8Way(in = part1, out = ora);
+	Or8Way(in = part2, out = orb);
+	Or(a = ora, b = orb, out = notzero);
+	Not(in = notzero, out = zr);
+
 }
