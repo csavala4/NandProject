@@ -69,12 +69,3 @@ M=D //sets max posiiton REG to SCREEN value
 	M=D
 	@BEGIN
 	0;JMP // otherwise, reset screen current position memory register
-
-
-
-
-
-
-
-
-
