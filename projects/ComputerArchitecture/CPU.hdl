@@ -1,0 +1,110 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+	/**
+	 *IN
+	 *    x[16], y[16],  // 16-bit inputs
+	 *    zx, // zero the x input
+	 *    nx, // negate the x input
+	 *    zy, // zero the y input
+	 *    ny, // negate the y input
+	 *    f,  // compute out = x + y (if 1) or x & y (if 0)
+	 *    no; // negate the out output
+	 *OUT
+	 *    out[16], // 16-bit output
+	 *    zr, // 1 if (out == 0), 0 otherwise
+	 *    ng; // 1 if (out < 0),  0 otherwise
+	 */
+
+CHIP CPU {
+
+	IN  inM[16],         // M value input  (M = contents of RAM[A])
+	instruction[16], // Instruction for execution
+	reset;           // Signals whether to re-start the current
+	// program (reset==1) or continue executing
+	// the current program (reset==0).
+
+	OUT outM[16],        // M value output
+		writeM,          // Write to M? 
+		addressM[15],    // Address in data memory (of M)
+		pc[15];          // address of next instruction
+
+PARTS:
+	//Mux that takes input of a or c instruciton and ALU output
+	Mux16(a=ALUout, b=instruction, sel=aInstr, out=instrMuxOut);
+	
+	//Areg that takes input of mux output and outputs value to next mux, addresM, and PC
+	ARegister(in=instrMuxOut, load=loadA, out=AReg, out[0..14]=addressM);
+
+	//2nd mux to take in value of Areg output and input of inM. outputs to y val of ALU
+	Mux16(a=AReg, b=inM, sel=selM, out=AMuxout);
+
+	//ALU performs arithmetic for cpu and takes input of Dreg and 2ndmux. Output to outM,Dreg, and 1st mux.
+	ALU(x=DReg, y=AMuxout, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=ALUout, out=outM, zr=ALUzr, ng=ALUng);
+
+	//Dreg takes input of ALU output and outputs to x val of ALU
+	DRegister(in=ALUout, load=writeD, out=DReg);
+
+	//program counter takes Areg as input, loads jump and inc, outputs to pc and has reset.
+	PC(in=AReg, load=jump, inc=true, reset=reset, out[0..14]=pc);
+
+	// load 15 bits into A-registerif a-instruction 
+	Nand(a=instruction[15], b=true, out=aInstr);
+	Not(in=aInstr, out=cInstr);
+
+	// determine correct ALU source if c-instruction
+	And(a=instruction[12], b=true, out=selM);
+
+	// Logic to determine correct ALU destination
+	And(a=instruction[5], b=true, out=writeA);
+	Or(a=writeA, b=aInstr, out=loadA);
+
+	And(a=instruction[4], b=instruction[15], out=writeD);
+	And(a=instruction[3], b=instruction[15], out=writeM);
+
+	// Demux to select different logic that relates to jumping conditions
+	DMux8Way(in=true, sel=instruction[0..2], a=nojump, b=jgt, c=jeq, d=jge, e=jlt, f=jne, g=jle, h=jjmp);
+
+	Not(in=ALUng, out=ALUnotng);          //if val ng then out is nng
+	Not(in=ALUzr, out=Notzr);             //if val zr the out is nzr
+	And(a=ALUnotng, b=Notzr, out=ALUpos );//if val nng and nzr then out is pos 
+	Or(a=ALUzr, b=ALUng, out=zrOrng);     //if val zr or val ng then out is zrORng
+	Or(a=ALUzr, b=ALUpos, out=zrOrpos);   //if val zr or val pos then out is zrORpos
+
+	And(a=jgt, b=ALUpos, out=jjgt);       //jump grtr than if b is pos
+	And(a=jeq, b=ALUzr, out=jjeq);        //jump equal to zr if b is zr
+	And(a=jge, b=zrOrpos, out=jjge);      //jump grtr or equal if b is zr or pos
+	And(a=jlt, b=ALUng, out=jjlt);        //jump lt if b is neg
+	And(a=jne, b=Notzr, out=jjne);        //jump nequal if b is nzr
+	And(a=jle, b=zrOrng, out=jjle);       //jump lt or nequal if b is zr or neg
+
+	//Or to specify which jump condition to execute. or, if no condition then nojump
+	Or8Way(in[0]=false, in[1]=jjgt, in[2]=jjeq, in[3]=jjge, in[4]=jjlt, in[5]=jjne, in[6]=jjle, in[7]=jjmp, out=jumpnow);
+
+	//  only on c-instruction jump
+	And(a=jumpnow, b=cInstr, out=jump);
+
+}
